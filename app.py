@@ -341,9 +341,18 @@ def callback():
 
         session["token_info"] = token_info
         session.modified = True
-        return redirect("/")
+
+        # Debug: show success before redirect
+        return render_page(f'''
+        <div class="card">
+            <h2>Login Successful!</h2>
+            <p>Token received. Session keys: {list(session.keys())}</p>
+            <a href="/" class="btn btn-primary">Continue to Dashboard</a>
+        </div>
+        ''')
     except Exception as e:
-        return render_page(f'<div class="card"><h2>Error</h2><p>Callback error: {str(e)}</p><a href="/" class="btn btn-primary">Go Back</a></div>')
+        import traceback
+        return render_page(f'<div class="card"><h2>Error</h2><p>Callback error: {str(e)}</p><pre>{traceback.format_exc()}</pre><a href="/" class="btn btn-primary">Go Back</a></div>')
 
 
 @app.route("/logout")
