@@ -254,10 +254,11 @@ def index():
 
     try:
         user = sp.current_user()
-        playlist = sp.playlist(SPOTIFY_PLAYLIST_ID, fields="name,images,tracks(total)")
+        playlist = sp.playlist(SPOTIFY_PLAYLIST_ID)
 
         avatar = f'<img src="{user["images"][0]["url"]}" class="avatar">' if user.get("images") else ""
         cover = f'<img src="{playlist["images"][0]["url"]}" class="playlist-cover">' if playlist.get("images") else ""
+        track_count = playlist.get("tracks", {}).get("total", "?")
 
         content = f'''
         <div class="user-bar">
@@ -269,8 +270,8 @@ def index():
             <div class="playlist-info">
                 {cover}
                 <div>
-                    <h3>{playlist["name"]}</h3>
-                    <p>{playlist["tracks"]["total"]} tracks</p>
+                    <h3>{playlist.get("name", "Playlist")}</h3>
+                    <p>{track_count} tracks</p>
                     <a href="https://open.spotify.com/playlist/{SPOTIFY_PLAYLIST_ID}" target="_blank" class="btn btn-small">Open in Spotify</a>
                 </div>
             </div>
