@@ -285,8 +285,8 @@ def index():
         return render_page(content)
 
     except Exception as e:
-        import traceback
-        return render_page(f'<div class="card"><h2>Dashboard Error</h2><p>{str(e)}</p><pre>{traceback.format_exc()}</pre><a href="/logout" class="btn btn-primary">Logout and Try Again</a></div>')
+        session.clear()
+        return render_page(f'<div class="card"><h2>Error</h2><p>{str(e)}</p><a href="/" class="btn btn-primary">Try Again</a></div>')
 
 
 @app.route("/health")
@@ -298,22 +298,6 @@ def health():
         "redirect_uri": SPOTIFY_REDIRECT_URI,
     })
 
-@app.route("/debug-session")
-def debug_session():
-    return jsonify({
-        "has_token": "token_info" in session,
-        "session_keys": list(session.keys()),
-    })
-
-@app.route("/test-set")
-def test_set():
-    session["test"] = "hello"
-    session.modified = True
-    return "Cookie set! Now visit /test-get"
-
-@app.route("/test-get")
-def test_get():
-    return jsonify({"test_value": session.get("test"), "all_keys": list(session.keys())})
 
 
 @app.route("/login")
@@ -342,18 +326,9 @@ def callback():
 
         session["token_info"] = token_info
         session.modified = True
-
-        # Debug: show success before redirect
-        return render_page(f'''
-        <div class="card">
-            <h2>Login Successful!</h2>
-            <p>Token received. Session keys: {list(session.keys())}</p>
-            <a href="/" class="btn btn-primary">Continue to Dashboard</a>
-        </div>
-        ''')
+        return redirect("/")
     except Exception as e:
-        import traceback
-        return render_page(f'<div class="card"><h2>Error</h2><p>Callback error: {str(e)}</p><pre>{traceback.format_exc()}</pre><a href="/" class="btn btn-primary">Go Back</a></div>')
+        return render_page(f'<div class="card"><h2>Error</h2><p>Login failed: {str(e)}</p><a href="/" class="btn btn-primary">Try Again</a></div>')
 
 
 @app.route("/logout")
