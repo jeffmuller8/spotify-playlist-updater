@@ -1,0 +1,28 @@
+# Environment and secrets
+.env
+.spotify_cache
+
+# Runtime data
+added_songs.json
+playlist_update.log
+
+# Vercel
+.vercel
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.so
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
