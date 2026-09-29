@@ -304,6 +304,16 @@ def debug_session():
         "session_keys": list(session.keys()),
     })
 
+@app.route("/test-set")
+def test_set():
+    session["test"] = "hello"
+    session.modified = True
+    return "Cookie set! Now visit /test-get"
+
+@app.route("/test-get")
+def test_get():
+    return jsonify({"test_value": session.get("test"), "all_keys": list(session.keys())})
+
 
 @app.route("/login")
 def login():
