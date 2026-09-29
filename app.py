@@ -294,6 +294,14 @@ def health():
         "status": "ok",
         "has_client_id": bool(SPOTIFY_CLIENT_ID),
         "has_client_secret": bool(SPOTIFY_CLIENT_SECRET),
+        "redirect_uri": SPOTIFY_REDIRECT_URI,
+    })
+
+@app.route("/debug-session")
+def debug_session():
+    return jsonify({
+        "has_token": "token_info" in session,
+        "session_keys": list(session.keys()),
     })
 
 
@@ -311,10 +319,21 @@ def callback():
     if error:
         return render_page(f'<div class="card"><h2>Error</h2><p>{error}</p><a href="/" class="btn btn-primary">Go Back</a></div>')
 
-    sp_oauth = get_spotify_oauth()
-    token_info = sp_oauth.get_access_token(code)
-    session["token_info"] = token_info
-    return redirect("/")
+    if not code:
+        return render_page('<div class="card"><h2>Error</h2><p>No authorization code received</p><a href="/" class="btn btn-primary">Go Back</a></div>')
+
+    try:
+        sp_oauth = get_spotify_oauth()
+        token_info = sp_oauth.get_access_token(code, as_dict=True)
+
+        if not token_info:
+            return render_page('<div class="card"><h2>Error</h2><p>Failed to get token from Spotify</p><a href="/" class="btn btn-primary">Go Back</a></div>')
+
+        session["token_info"] = token_info
+        session.modified = True
+        return redirect("/")
+    except Exception as e:
+        return render_page(f'<div class="card"><h2>Error</h2><p>Callback error: {str(e)}</p><a href="/" class="btn btn-primary">Go Back</a></div>')
 
 
 @app.route("/logout")
