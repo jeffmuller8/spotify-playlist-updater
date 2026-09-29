@@ -284,8 +284,8 @@ def index():
         return render_page(content)
 
     except Exception as e:
-        session.clear()
-        return redirect("/")
+        import traceback
+        return render_page(f'<div class="card"><h2>Dashboard Error</h2><p>{str(e)}</p><pre>{traceback.format_exc()}</pre><a href="/logout" class="btn btn-primary">Logout and Try Again</a></div>')
 
 
 @app.route("/health")
