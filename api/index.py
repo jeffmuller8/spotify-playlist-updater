@@ -1,14 +1,31 @@
 """Flask app for Spotify Playlist Updater - Vercel serverless function."""
 
 import os
-from flask import Flask, redirect, request, session, jsonify, make_response
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
-import requests
-from bs4 import BeautifulSoup
+from flask import Flask, redirect, request, session, jsonify
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key-change-me")
+
+# Test endpoint to verify deployment works
+@app.route("/health")
+def health():
+    return jsonify({
+        "status": "ok",
+        "has_client_id": bool(os.environ.get("SPOTIFY_CLIENT_ID")),
+        "has_client_secret": bool(os.environ.get("SPOTIFY_CLIENT_SECRET")),
+        "has_redirect_uri": bool(os.environ.get("SPOTIFY_REDIRECT_URI")),
+    })
+
+# Lazy imports to avoid startup crashes
+def get_spotipy():
+    import spotipy
+    from spotipy.oauth2 import SpotifyOAuth
+    return spotipy, SpotifyOAuth
+
+def get_scraper():
+    import requests
+    from bs4 import BeautifulSoup
+    return requests, BeautifulSoup
 
 # Spotify configuration
 SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID")
@@ -20,6 +37,7 @@ KISS108_URL = "https://kiss108.iheart.com/music/top-songs/"
 
 
 def get_spotify_oauth():
+    spotipy, SpotifyOAuth = get_spotipy()
     return SpotifyOAuth(
         client_id=SPOTIFY_CLIENT_ID,
         client_secret=SPOTIFY_CLIENT_SECRET,
@@ -31,6 +49,7 @@ def get_spotify_oauth():
 
 
 def get_spotify_client():
+    spotipy, SpotifyOAuth = get_spotipy()
     token_info = session.get("token_info")
     if not token_info:
         return None
@@ -42,6 +61,7 @@ def get_spotify_client():
 
 
 def fetch_kiss108_songs():
+    requests, BeautifulSoup = get_scraper()
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
     response = requests.get(KISS108_URL, headers=headers, timeout=30)
     response.raise_for_status()
@@ -223,7 +243,10 @@ def render_page(content, title="Kiss 108 Playlist Updater"):
 
 @app.route("/")
 def index():
-    sp = get_spotify_client()
+    try:
+        sp = get_spotify_client()
+    except Exception as e:
+        return render_page(f'<div class="card"><h2>Config Error</h2><p>{str(e)}</p><p>Check your environment variables.</p></div>')
 
     if not sp:
         content = '''
