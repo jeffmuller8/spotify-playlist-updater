@@ -230,6 +230,76 @@ def render_page(content, title="Kiss 108 Playlist Updater"):
                 }}
             }});
         }}
+
+        const customUrlInput = document.getElementById('customUrl');
+        const scrapeCustomBtn = document.getElementById('scrapeCustomBtn');
+        const updateCustomBtn = document.getElementById('updateCustomBtn');
+
+        if (scrapeCustomBtn) {{
+            scrapeCustomBtn.addEventListener('click', async () => {{
+                const url = customUrlInput.value.trim();
+                if (!url) {{ alert('Please enter a URL'); return; }}
+                showLoading('Scraping ' + url + '...');
+                try {{
+                    const response = await fetch('/api/scrape-url?url=' + encodeURIComponent(url));
+                    const data = await response.json();
+                    hideLoading();
+                    if (data.success) {{
+                        let html = '<p style="margin-bottom:1rem;color:#888;">Found ' + data.count + ' songs from ' + escapeHtml(url) + '</p><ul class="song-list">';
+                        data.songs.forEach((song, i) => {{
+                            html += '<li class="song-item"><span style="color:#888;width:24px;">' + (i+1) + '</span><div class="song-details"><div class="song-title">' + escapeHtml(song.title) + '</div><div class="song-artist">' + escapeHtml(song.artist) + '</div></div></li>';
+                        }});
+                        html += '</ul>';
+                        resultsPanel.innerHTML = '<h2>Songs Found</h2>' + html;
+                        resultsPanel.classList.remove('hidden');
+                    }} else {{
+                        alert('Error: ' + data.error);
+                    }}
+                }} catch (err) {{
+                    hideLoading();
+                    alert('Failed: ' + err.message);
+                }}
+            }});
+        }}
+
+        if (updateCustomBtn) {{
+            updateCustomBtn.addEventListener('click', async () => {{
+                const url = customUrlInput.value.trim();
+                if (!url) {{ alert('Please enter a URL'); return; }}
+                showLoading('Adding songs from ' + url + '...');
+                try {{
+                    const response = await fetch('/api/update-url', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{url: url}})
+                    }});
+                    const data = await response.json();
+                    hideLoading();
+                    if (data.success) {{
+                        let html = '<div class="summary">';
+                        html += '<div class="summary-item"><div class="number">' + data.summary.scraped + '</div><div class="label">Scraped</div></div>';
+                        html += '<div class="summary-item"><div class="number" style="color:#1DB954">' + data.summary.added + '</div><div class="label">Added</div></div>';
+                        html += '<div class="summary-item"><div class="number" style="color:#ffc107">' + data.summary.already_exists + '</div><div class="label">Exists</div></div>';
+                        html += '<div class="summary-item"><div class="number" style="color:#ff5252">' + data.summary.not_found + '</div><div class="label">Not Found</div></div>';
+                        html += '</div>';
+                        if (data.added.length > 0) {{
+                            html += '<h3 class="section-title">Added</h3><ul class="song-list">';
+                            data.added.forEach(s => {{
+                                html += '<li class="song-item"><div class="song-details"><div class="song-title">' + escapeHtml(s.spotify_name) + '</div><div class="song-artist">' + escapeHtml(s.artist) + '</div></div><span class="badge badge-added">Added</span></li>';
+                            }});
+                            html += '</ul>';
+                        }}
+                        resultsPanel.innerHTML = '<h2>Update Complete</h2>' + html;
+                        resultsPanel.classList.remove('hidden');
+                    }} else {{
+                        alert('Error: ' + data.error);
+                    }}
+                }} catch (err) {{
+                    hideLoading();
+                    alert('Failed: ' + err.message);
+                }}
+            }});
+        }}
     </script>
 </body>
 </html>'''
@@ -274,6 +344,15 @@ def index():
                     <p>{track_count} tracks</p>
                     <a href="https://open.spotify.com/playlist/{SPOTIFY_PLAYLIST_ID}" target="_blank" class="btn btn-small">Open in Spotify</a>
                 </div>
+            </div>
+        </div>
+        <div class="card">
+            <h2>Custom URL Scraper</h2>
+            <p style="color:#888;margin-bottom:1rem;">Enter any webpage with a song list to scrape and add to your playlist</p>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <input type="url" id="customUrl" placeholder="https://example.com/top-songs" style="flex:1;min-width:200px;padding:0.75rem 1rem;border-radius:8px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.05);color:#fff;font-size:1rem;">
+                <button id="scrapeCustomBtn" class="btn btn-primary">Preview Songs</button>
+                <button id="updateCustomBtn" class="btn btn-success">Add to Playlist</button>
             </div>
         </div>
         <div class="actions">
@@ -337,11 +416,136 @@ def logout():
     return redirect("/")
 
 
+def scrape_url(url):
+    """Generic scraper that tries to find song/artist pairs from any URL."""
+    requests, BeautifulSoup = get_scraper()
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+    response = requests.get(url, headers=headers, timeout=30)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+    songs = []
+
+    # Pattern 1: Look for common track/song containers
+    track_items = soup.select('[class*="track"], [class*="song"], [class*="playlist-item"], [class*="music"], [class*="chart"]')
+    for item in track_items:
+        title_elem = item.select_one('[class*="title"], [class*="song-name"], [class*="track-name"], h3, h4, strong')
+        artist_elem = item.select_one('[class*="artist"], [class*="subtitle"], [class*="performer"], span, p')
+        if title_elem and artist_elem and title_elem != artist_elem:
+            song_title = title_elem.get_text(strip=True)
+            artist_name = artist_elem.get_text(strip=True)
+            if song_title and artist_name and len(song_title) > 1 and len(artist_name) > 1:
+                songs.append({"title": song_title, "artist": artist_name})
+
+    # Pattern 2: Look for "Song - Artist" or "Artist - Song" patterns in links
+    if not songs:
+        for link in soup.select('a'):
+            text = link.get_text(strip=True)
+            if " - " in text and len(text) < 100:
+                parts = text.split(" - ", 1)
+                if len(parts) == 2 and len(parts[0]) > 1 and len(parts[1]) > 1:
+                    songs.append({"title": parts[0].strip(), "artist": parts[1].strip()})
+
+    # Pattern 3: Look for list items with multiple text elements
+    if not songs:
+        for item in soup.select('li, tr, div.item, article'):
+            texts = [t.strip() for t in item.stripped_strings if len(t.strip()) > 1]
+            if len(texts) >= 2:
+                potential_song = texts[0]
+                potential_artist = texts[1]
+                skip_words = ['menu', 'home', 'search', 'login', 'sign', 'click', 'more', 'view']
+                if not any(x in potential_song.lower() for x in skip_words):
+                    if len(potential_song) < 80 and len(potential_artist) < 80:
+                        songs.append({"title": potential_song, "artist": potential_artist})
+
+    # Deduplicate
+    seen = set()
+    unique = []
+    for song in songs:
+        key = (song["title"].lower(), song["artist"].lower())
+        if key not in seen:
+            seen.add(key)
+            unique.append(song)
+    return unique
+
+
 @app.route("/api/scrape")
 def api_scrape():
     try:
         songs = fetch_kiss108_songs()
         return jsonify({"success": True, "songs": songs, "count": len(songs)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/scrape-url")
+def api_scrape_url():
+    url = request.args.get("url")
+    if not url:
+        return jsonify({"success": False, "error": "No URL provided"}), 400
+    try:
+        songs = scrape_url(url)
+        return jsonify({"success": True, "songs": songs, "count": len(songs)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/update-url", methods=["POST"])
+def api_update_url():
+    sp = get_spotify_client()
+    if not sp:
+        return jsonify({"success": False, "error": "Not authenticated"}), 401
+
+    data = request.get_json()
+    url = data.get("url") if data else None
+    if not url:
+        return jsonify({"success": False, "error": "No URL provided"}), 400
+
+    try:
+        scraped = scrape_url(url)
+
+        existing_uris = set()
+        offset = 0
+        while True:
+            results = sp.playlist_tracks(SPOTIFY_PLAYLIST_ID, offset=offset, limit=100, fields="items(track(uri)),next")
+            for item in results.get("items", []):
+                if item.get("track"):
+                    existing_uris.add(item["track"]["uri"])
+            if not results.get("next"):
+                break
+            offset += 100
+
+        added = []
+        not_found = []
+        already_exists = []
+
+        for song in scraped:
+            query = f"track:{song['title']} artist:{song['artist']}"
+            results = sp.search(q=query, type="track", limit=3)
+            tracks = results.get("tracks", {}).get("items", [])
+
+            if not tracks:
+                query = f"{song['title']} {song['artist']}"
+                results = sp.search(q=query, type="track", limit=3)
+                tracks = results.get("tracks", {}).get("items", [])
+
+            if tracks:
+                track = tracks[0]
+                if track["uri"] in existing_uris:
+                    already_exists.append({"title": song["title"], "artist": song["artist"], "spotify_name": track["name"]})
+                else:
+                    sp.playlist_add_items(SPOTIFY_PLAYLIST_ID, [track["uri"]])
+                    existing_uris.add(track["uri"])
+                    added.append({"title": song["title"], "artist": song["artist"], "spotify_name": track["name"], "uri": track["uri"]})
+            else:
+                not_found.append(song)
+
+        return jsonify({
+            "success": True,
+            "added": added,
+            "already_exists": already_exists,
+            "not_found": not_found,
+            "summary": {"scraped": len(scraped), "added": len(added), "already_exists": len(already_exists), "not_found": len(not_found)}
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
